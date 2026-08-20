@@ -30,7 +30,18 @@ from PySide6.QtWidgets import (
 MASTER_CHARACTER_IMAGE = "pet.png"                          # 锁定的角色母版
 DEFAULT_IMAGE = MASTER_CHARACTER_IMAGE                       # 默认待机图
 
-BASE_DIR = Path(__file__).parent          # 素材目录
+def _resource_dir():
+    """素材目录；打包成 exe 后也能定位到打包内的素材。"""
+    if getattr(sys, "frozen", False):
+        # PyInstaller 打包运行：素材随 exe 解压到 _MEIPASS 临时目录
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass)
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
+BASE_DIR = _resource_dir()          # 素材目录
 
 
 def _mid_frame_key(name):
