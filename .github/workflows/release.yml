@@ -1,0 +1,40 @@
+# 自动化发布：push 一个 v* 的 tag（如 v1.0.0）→ 云端打包 exe → 自动生成 Release
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: 打包 exe
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name DesktopPet
+          --add-data "happy_*.png;."
+          --add-data "walk*.png;."
+          --add-data "pet.png;."
+          --add-data "assets;assets"
+          main.py
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DesktopPet.exe
+          generate_release_notes: true
