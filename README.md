@@ -47,7 +47,7 @@ python main.py
 
 ```bash
 pip install pyinstaller
-pyinstaller --noconfirm --onefile --windowed --name 桌宠 \
+pyinstaller --noconfirm --onefile --windowed --name DesktopPet \
     --add-data "happy_*.png;." \
     --add-data "walk*.png;." \
     --add-data "pet.png;." \
@@ -55,7 +55,7 @@ pyinstaller --noconfirm --onefile --windowed --name 桌宠 \
     main.py
 ```
 
-产物在 `dist/桌宠.exe`（约 170MB，已含全部素材）。
+产物在 `dist/DesktopPet.exe`（约 170MB，已含全部素材）。注意 `--name` 用英文名，中文名会被 PyInstaller 处理成 `default.exe`。
 
 ## 🎨 自定义素材
 
