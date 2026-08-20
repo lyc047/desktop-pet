@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "master_image": "../../../pet.png",
+  "canvas": { "width": 1086, "height": 1448 },
+  "display_height": 350,
+  "coordinate_system": "top-left origin; x increases right; y increases down; left/right are the character's own left/right",
+  "export_rule": "PNG with straight alpha; first export uses full canvas; no background or baked drop shadow",
+  "backfill_layers": [
+    { "id": "hair_back_complete", "file": "../backfill/hair_back_complete_v1.png", "role": "optional underlay for small head sway", "status": "approved_for_small_motion" },
+    { "id": "torso_under_limbs", "file": "../backfill/torso_under_limbs_v1.png", "role": "optional underlay for small arm motion", "status": "approved_for_small_motion" },
+    { "id": "head_under_hair", "file": "../backfill/head_under_hair_v1.png", "role": "face fill beneath separately moved bangs", "status": "experimental_do_not_load" }
+  ],
+  "layers": [
+    { "id": "ground_shadow", "file": "ground_shadow.png", "priority": "P0", "pivot": "canvas_center", "required": true },
+    { "id": "hair_back", "file": "hair_back.png", "priority": "P0", "pivot": "head_center", "required": true },
+    { "id": "leg_l", "file": "leg_l.png", "priority": "P0", "pivot": "hip_l", "required": true },
+    { "id": "leg_r", "file": "leg_r.png", "priority": "P0", "pivot": "hip_r", "required": true },
+    { "id": "torso_base", "file": "torso_base.png", "priority": "P0", "pivot": "body_center", "required": true },
+    { "id": "arm_l", "file": "arm_l.png", "priority": "P0", "pivot": "shoulder_l", "required": true },
+    { "id": "arm_r", "file": "arm_r.png", "priority": "P0", "pivot": "shoulder_r", "required": true },
+    { "id": "head_base", "file": "head_base.png", "priority": "P0", "pivot": "neck_center", "required": true },
+    { "id": "eye_l", "file": "eye_l.png", "priority": "P0", "pivot": "eye_l_center", "required": true },
+    { "id": "eye_r", "file": "eye_r.png", "priority": "P0", "pivot": "eye_r_center", "required": true },
+    { "id": "pupil_l", "file": "pupil_l.png", "priority": "P0", "pivot": "eye_l_center", "required": true },
+    { "id": "pupil_r", "file": "pupil_r.png", "priority": "P0", "pivot": "eye_r_center", "required": true },
+    { "id": "eyelid_l", "file": "eyelid_l.png", "priority": "P0", "pivot": "eye_l_center", "required": true },
+    { "id": "eyelid_r", "file": "eyelid_r.png", "priority": "P0", "pivot": "eye_r_center", "required": true },
+    { "id": "mouth_neutral", "file": "mouth_neutral.png", "priority": "P0", "pivot": "mouth_center", "required": true },
+    { "id": "hair_front", "file": "hair_front.png", "priority": "P0", "pivot": "head_center", "required": true },
+    { "id": "braid_l", "file": "braid_l.png", "priority": "P0", "pivot": "braid_l_root", "required": true },
+    { "id": "braid_r", "file": "braid_r.png", "priority": "P0", "pivot": "braid_r_root", "required": true },
+    { "id": "hoodie_hem", "file": "hoodie_hem.png", "priority": "P1", "pivot": "body_center", "required": false },
+    { "id": "blush", "file": "blush.png", "priority": "P1", "pivot": "head_center", "required": false },
+    { "id": "highlight_overlay", "file": "highlight_overlay.png", "priority": "P1", "pivot": "canvas_center", "required": false }
+  ]
+}

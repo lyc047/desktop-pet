@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1086" height="1448" viewBox="0 0 1086 1448">
+  <!-- 将此 SVG 作为顶层导引导入 Photopea；它不包含角色图片。 -->
+  <g fill="none" stroke-width="7" stroke-linejoin="round" stroke-dasharray="18 12">
+    <!-- 1: 后发，仅保留脸部和前发后面的可见发量，不包含两条辫子。 -->
+    <path stroke="#B565F2" fill="#B565F2" fill-opacity="0.13"
+      d="M294 551 C213 469 197 350 224 238 C250 132 339 48 451 29 C573 7 702 36 790 113 C866 181 892 289 865 401 C853 456 822 508 782 553 L728 512 C757 455 776 395 771 322 C765 226 678 159 569 150 C445 140 339 212 320 332 C308 408 336 474 373 522 Z"/>
+    <!-- 2: 前发，包含刘海和盖在额头、脸颊前的碎发。 -->
+    <path stroke="#FFD43B" fill="#FFD43B" fill-opacity="0.13"
+      d="M310 209 C367 92 549 56 690 121 C756 151 797 214 797 292 C764 270 735 260 703 257 C666 253 640 272 612 302 C579 335 545 360 508 365 C465 373 422 352 391 367 C356 384 334 411 322 451 C289 400 282 302 310 209 Z"/>
+    <!-- 3: 头部底图，保留皮肤、耳朵和脖子；眼嘴暂时允许留在这层。 -->
+    <path stroke="#FF5C77" fill="#FF5C77" fill-opacity="0.11"
+      d="M337 347 C370 283 446 250 540 252 C635 252 716 294 748 356 L746 464 C741 530 684 584 618 605 L607 647 L478 647 L464 605 C397 581 343 530 337 459 Z"/>
+    <!-- 4: 身体底图，只保留连帽衫与短裤中心，不包含手臂、双腿和辫子。 -->
+    <path stroke="#39A7FF" fill="#39A7FF" fill-opacity="0.11"
+      d="M396 597 C437 566 475 556 543 556 C610 556 650 567 691 599 L744 708 L720 986 C673 1021 614 1038 544 1037 C470 1038 407 1023 366 986 L344 708 Z"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle">
+    <g><circle cx="222" cy="230" r="24" fill="#B565F2"/><text x="222" y="240" fill="white">1</text></g>
+    <g><circle cx="397" cy="163" r="24" fill="#FFD43B"/><text x="397" y="173" fill="#222">2</text></g>
+    <g><circle cx="775" cy="444" r="24" fill="#FF5C77"/><text x="775" y="454" fill="white">3</text></g>
+    <g><circle cx="716" cy="827" r="24" fill="#39A7FF"/><text x="716" y="837" fill="white">4</text></g>
+  </g>
+</svg>

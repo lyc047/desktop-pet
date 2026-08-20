@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1086" height="1448" viewBox="0 0 1086 1448">
+  <!-- 面部是第二轮拆层：先保留头部底图，再制作无五官的脸部补全底图。 -->
+  <g fill="none" stroke-width="6" stroke-linejoin="round" stroke-dasharray="14 10">
+    <!-- 11/12: 眼睛可见边界。画面左为角色右，画面右为角色左。 -->
+    <path stroke="#6C63FF" fill="#6C63FF" fill-opacity="0.13" d="M367 413 C394 382 454 380 487 413 C468 468 405 478 367 430 Z"/>
+    <path stroke="#6C63FF" fill="#6C63FF" fill-opacity="0.13" d="M591 413 C624 380 684 382 711 413 L711 430 C673 478 610 468 591 413 Z"/>
+    <!-- 13/14: 瞳孔仅取棕色虹膜、瞳孔和高光，不取眼白。 -->
+    <ellipse stroke="#00B8D9" fill="#00B8D9" fill-opacity="0.14" cx="432" cy="429" rx="33" ry="37"/>
+    <ellipse stroke="#00B8D9" fill="#00B8D9" fill-opacity="0.14" cx="646" cy="429" rx="33" ry="37"/>
+    <!-- 15/16: 上眼睑使用眼睛上缘，可单独做闭眼替换图。 -->
+    <path stroke="#F72585" d="M368 411 C399 382 452 382 487 412"/>
+    <path stroke="#F72585" d="M591 412 C626 382 679 382 711 411"/>
+    <!-- 17: 嘴部边界。 -->
+    <path stroke="#EF476F" fill="#EF476F" fill-opacity="0.14" d="M510 515 C530 504 556 504 576 515 C558 537 529 538 510 515 Z"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="white">
+    <g><circle cx="367" cy="390" r="21" fill="#6C63FF"/><text x="367" y="398">11</text></g>
+    <g><circle cx="711" cy="390" r="21" fill="#6C63FF"/><text x="711" y="398">12</text></g>
+    <g><circle cx="431" cy="478" r="21" fill="#00B8D9"/><text x="431" y="486">13</text></g>
+    <g><circle cx="646" cy="478" r="21" fill="#00B8D9"/><text x="646" y="486">14</text></g>
+    <g><circle cx="480" cy="382" r="21" fill="#F72585"/><text x="480" y="390">15</text></g>
+    <g><circle cx="601" cy="382" r="21" fill="#F72585"/><text x="601" y="390">16</text></g>
+    <g><circle cx="543" cy="553" r="21" fill="#EF476F"/><text x="543" y="561">17</text></g>
+  </g>
+</svg>

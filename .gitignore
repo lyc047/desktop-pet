@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# PyInstaller 打包产物
+build/
+dist/
+*.spec
+
+# 本机环境文件（不进入仓库）
+.runtime_backup/
+.vscode/
+*.psd
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.log
