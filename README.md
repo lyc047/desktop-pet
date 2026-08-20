@@ -41,6 +41,22 @@ python main.py
 | 左键拖拽 | 移动桌宠，可拖到屏幕边缘吸附 |
 | 右键菜单 | 行走动画 / 表情 / 说句话 / 退出 |
 
+## 📦 打包为独立 exe
+
+用 PyInstaller 把桌宠打包成单文件 exe，非技术用户**双击即可运行**，无需装 Python：
+
+```bash
+pip install pyinstaller
+pyinstaller --noconfirm --onefile --windowed --name 桌宠 \
+    --add-data "happy_*.png;." \
+    --add-data "walk*.png;." \
+    --add-data "pet.png;." \
+    --add-data "assets;assets" \
+    main.py
+```
+
+产物在 `dist/桌宠.exe`（约 170MB，已含全部素材）。
+
 ## 🎨 自定义素材
 
 素材文件直接放在项目根目录或 `assets/` 下，桌宠启动时**自动扫描**，无需改代码：
