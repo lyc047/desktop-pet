@@ -33,8 +33,24 @@ jobs:
           --add-data "assets;assets"
           main.py
 
+      - name: 计算 SHA256 校验值
+        id: checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist\DesktopPet.exe -Algorithm SHA256).Hash.ToLower()
+          "hash=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/DesktopPet.exe
+          body: |
+            自动打包的 Windows 单文件 exe，双击即可运行。
+
+            ### 校验值（SHA-256）
+            ```
+            ${{ steps.checksum.outputs.hash }}
+            ```
+
+            下载后执行 `certutil -hashfile DesktopPet.exe SHA256` 核对一致性。
           generate_release_notes: true
