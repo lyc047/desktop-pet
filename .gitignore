@@ -17,3 +17,8 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+
+# 本地测试与调试产物
+_tmp/
+_test*.py
+assets/debug/
