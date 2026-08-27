@@ -1,6 +1,7 @@
 import math
 import random
 import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -186,6 +187,63 @@ def _resource_dir():
 
 
 BASE_DIR = _resource_dir()          # 素材目录
+
+
+def build_executable():
+    """使用当前 Python 环境中的 PyInstaller 生成单文件 EXE。"""
+    if getattr(sys, "frozen", False):
+        print("已经打包的程序不能再次执行打包，请从项目源码运行此命令。")
+        return 1
+
+    project_dir = Path(__file__).resolve().parent
+    try:
+        import PyInstaller  # noqa: F401
+    except ModuleNotFoundError:
+        print("没有安装 PyInstaller，请先执行：")
+        print(f'"{sys.executable}" -m pip install pyinstaller')
+        return 1
+
+    required_paths = [
+        project_dir / "main.py",
+        project_dir / MASTER_CHARACTER_IMAGE,
+        project_dir / "assets",
+    ]
+    missing = [path for path in required_paths if not path.exists()]
+    if missing:
+        print("无法打包，缺少以下文件或目录：")
+        for path in missing:
+            print(f"- {path}")
+        return 1
+
+    data_files = [
+        *((path, ".") for path in sorted(project_dir.glob("happy_*.png"))),
+        *((path, ".") for path in sorted(project_dir.glob("walk*.png"))),
+        (project_dir / MASTER_CHARACTER_IMAGE, "."),
+        (project_dir / "assets", "assets"),
+    ]
+    command = [
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--clean",
+        "--onefile",
+        "--windowed",
+        "--name",
+        "DesktopPet",
+    ]
+    for source, destination in data_files:
+        command.extend(["--add-data", f"{source};{destination}"])
+    command.append(str(project_dir / "main.py"))
+
+    print("正在打包 DesktopPet.exe，请稍候……")
+    result = subprocess.run(command, cwd=project_dir, check=False)
+    if result.returncode == 0:
+        output_path = project_dir / "dist" / "DesktopPet.exe"
+        print(f"打包完成：{output_path}")
+    else:
+        print(f"打包失败，PyInstaller 返回代码：{result.returncode}")
+    return result.returncode
 
 
 def _mid_frame_key(name):
@@ -2702,6 +2760,9 @@ def _bind_instance_notifications(server, pet):
 
 
 def main():
+    if "--build-exe" in sys.argv[1:]:
+        return build_executable()
+
     app = QApplication(sys.argv)
     instance_server = _claim_single_instance()
     if instance_server is None:
