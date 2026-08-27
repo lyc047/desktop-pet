@@ -22,3 +22,7 @@ Thumbs.db
 _tmp/
 _test*.py
 assets/debug/
+
+.idea/
+
+.idea/
