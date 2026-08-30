@@ -25,9 +25,7 @@
   - 沙发 → 回到桌面并进入睡眠状态。
   - 房门 → 离开小屋，回到桌面。
 
-小屋基于 `house_window.py`（`HandDrawnHouse`）实现：采用“背景图 + 独立物件图层 + 代码绘制动画”的分层方案，物件各自持有动画状态，可并行动画。
-
-> 注：本次同时提交了 `house_scene_v2.py`、`house_scene_refined.py` 两套备选场景实现，但未接入主程序，当前生效的是 `house_window.py`。
+小屋基于 `house_scene_refined.py`（`HandDrawnHouse`）实现，`main.py` 从 `house_window.py` 导入（该文件作为入口转发到 refined 实现）。采用“底图 + 独立透明物件层 + 代码绘制动画”的分层方案：房间底图只含固定结构（`room_base_master_v2.png`），每个可交互物件是独立透明 PNG（`objects/refined/`），各自持有动画状态，可并行动画；华容道与画板对话框由 `house_scene_v2.py` 提供。
 
 ### 新增：剪贴板历史
 
