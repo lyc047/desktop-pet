@@ -1,9 +1,12 @@
 import math
 import random
+import re
 import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -43,6 +46,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from settings_dialog import SettingsDialog, SettingsStore, default_inbox_path
+from clipboard_history import ClipboardHistoryDialog, ClipboardHistoryManager
+from house_window import HandDrawnHouse
 
 SINGLE_INSTANCE_SERVER_NAME = "DesktopPet_SingleInstance_v1"
 SINGLE_INSTANCE_MESSAGE = b"show-already-running-message"
@@ -67,6 +72,7 @@ class InboxDropTask(QRunnable):
         destination,
         files=None,
         image_files=None,
+        remote_image_urls=None,
         note_text="",
         links=None,
         inline_image=None,
@@ -75,6 +81,7 @@ class InboxDropTask(QRunnable):
         self.destination = Path(destination)
         self.files = [Path(source) for source in (files or [])]
         self.image_files = [Path(source) for source in (image_files or [])]
+        self.remote_image_urls = list(remote_image_urls or [])
         self.note_text = note_text.strip()
         self.links = list(links or [])
         self.inline_image = inline_image.copy() if inline_image is not None else None
@@ -112,6 +119,56 @@ class InboxDropTask(QRunnable):
             except (OSError, shutil.Error) as error:
                 failures.append(f"{source.name}: {error}")
 
+    @staticmethod
+    def _remote_image_name(url, content_type):
+        parsed = urllib.parse.urlparse(url)
+        name = Path(urllib.parse.unquote(parsed.path)).name
+        suffix = Path(name).suffix.lower()
+        if suffix not in IMAGE_SUFFIXES:
+            suffix = {
+                "image/jpeg": ".jpg",
+                "image/png": ".png",
+                "image/gif": ".gif",
+                "image/webp": ".webp",
+                "image/bmp": ".bmp",
+                "image/tiff": ".tif",
+            }.get(content_type.split(";", 1)[0].lower(), ".png")
+            stem = Path(name).stem or "网页图片"
+            name = f"{stem}{suffix}"
+        return name
+
+    def _download_remote_images(self, folder, successes, failures):
+        folder.mkdir(parents=True, exist_ok=True)
+        max_bytes = 30 * 1024 * 1024
+        for url in self.remote_image_urls:
+            try:
+                request = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 DesktopPet/1.0",
+                        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                    },
+                )
+                with urllib.request.urlopen(request, timeout=18) as response:
+                    content_type = response.headers.get("Content-Type", "")
+                    data = response.read(max_bytes + 1)
+                if len(data) > max_bytes:
+                    raise OSError("图片超过 30 MB")
+                image = QImage.fromData(data)
+                if image.isNull():
+                    raise OSError("网址返回的内容不是有效图片")
+                name = self._remote_image_name(url, content_type)
+                target = self._unique_destination(folder, Path(name))
+                if not image.save(str(target)):
+                    # 某些网页图片的扩展名与实际编码不一致，
+                    # 统一转存 PNG 可避免保存失败。
+                    target = self._unique_destination(folder, Path(f"{Path(name).stem}.png"))
+                    if not image.save(str(target), "PNG"):
+                        raise OSError("图片编码失败")
+                successes.append(("image", str(target)))
+            except Exception as error:
+                failures.append(f"{url}: {error}")
+
     def run(self):
         successes = []
         failures = []
@@ -137,6 +194,7 @@ class InboxDropTask(QRunnable):
             successes,
             failures,
         )
+        self._download_remote_images(images_folder, successes, failures)
 
         if self.inline_image is not None and not self.inline_image.isNull():
             try:
@@ -312,6 +370,16 @@ EASTER_EGG_IMAGES = {
     "ghost": "assets/character/easter_eggs/ghost.png",
     "dress": "assets/character/easter_eggs/dress.png",
 }
+RECEIVE_BASE_IMAGE = "assets/character/receive/receive_base.png"
+RECEIVE_LABELS = {
+    "file": "文件",
+    "note": "文字",
+    "link": "链接",
+    "image": "图片",
+    "mixed": "多种内容",
+}
+RECEIVE_POSE_HOLD_MS = 1050
+RECEIVE_DREAM_HOLD_MS = 2400
 EASTER_CLICK_WINDOW_MS = 10000
 EASTER_CLICK_COUNT = 10
 EASTER_PET_HOLD_MS = 10000
@@ -332,6 +400,7 @@ NUZZLE_MIN_DELAY = 8000     # 睡觉时随机触发 nuzzle 的最小间隔 ms
 NUZZLE_MAX_DELAY = 18000    # 睡觉时随机触发 nuzzle 的最大间隔 ms
 IDLE_INTERVAL = 33          # 待机渲染约 30 FPS；仅对默认图生效
 MOTION_INTERVAL = 20        # 拖拽/落地姿态约 50 FPS
+TAP_DURATION_MS = 420       # 高频单击反馈：短促但有完整的注意与回稳过程
 DRAG_DIRECTION_TRIGGER_SPEED = 120.0  # 超过此水平速度才切换悬挂方向
 DRAG_LOCK_ROTATION = 2.8             # 方向触发后保持的倾斜角度
 EXPRESSION_TRANSITION_INTERVAL = 45  # 借现有眨眼帧遮住表情切换
@@ -343,8 +412,9 @@ CURIOUS_COOLDOWN_MS = 18000            # 好奇表情冷却
 CURIOUS_EXIT_DISTANCE = 190            # 触发后允许鼠标移动得更远，避免很快退出
 AUTO_SLEEP_IDLE_MS = 90000             # 90 秒无互动后开始犯困
 AUTO_SLEEP_TRANSITION_MS = 3400        # 困倦表情完成后进入睡眠
-DISTURB_WINDOW_MS = 6000               # 连续打扰统计窗口
-DISTURB_LIMIT = 4                      # 窗口内达到此次数触发不满
+DISTURB_WINDOW_MS = 10000              # 与十连击彩蛋共用自然连续点击窗口
+HURT_CLICK_COUNT = 3                   # 第三次点击表现委屈
+DISTURB_LIMIT = 6                      # 第六次点击表现生气/不满
 ANNOYED_COOLDOWN_MS = 14000            # 不满表情冷却
 
 # 台词优先级只用于“等待队列”取舍，不会打断当前正在显示的台词。
@@ -364,6 +434,8 @@ SPEECH_PRIORITIES = {
     "note_success": 3,
     "link_success": 3,
     "image_success": 3,
+    "dream_receive": 3,
+    "clipboard_copy": 3,
     "annoyed": 4,
     "dizzy": 4,
     "inbox_failure": 4,
@@ -477,11 +549,13 @@ BUBBLE_TEXTS = [
 class SpeechBubble(QWidget):
     """高对比、带阴影和尾巴的桌宠说话气泡。"""
 
-    MAX_TEXT_WIDTH = 220
-    MIN_WIDTH = 150
-    HORIZONTAL_PADDING = 24
-    TOP_PADDING = 14
-    TAIL_HEIGHT = 18
+    MAX_TEXT_WIDTH = 270
+    MIN_TEXT_WIDTH = 132
+    MIN_WIDTH = 202
+    HORIZONTAL_PADDING = 28
+    VERTICAL_PADDING = 17
+    TAIL_HEIGHT = 19
+    MAX_LINES = 2
 
     def __init__(self):
         super().__init__(None)
@@ -521,27 +595,62 @@ class SpeechBubble(QWidget):
     def text_flags(self):
         return Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap
 
+    @staticmethod
+    def _take_line(text, metrics, width):
+        """取出在指定宽度内能完整显示的最长前缀。"""
+        if metrics.horizontalAdvance(text) <= width:
+            return text, ""
+        low, high = 1, len(text)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if metrics.horizontalAdvance(text[:middle]) <= width:
+                low = middle
+            else:
+                high = middle - 1
+        split_at = max(1, low)
+        # 英文句子尽量在空格处换行，中文则可按字符自然换行。
+        whitespace = text.rfind(" ", 0, split_at + 1)
+        if whitespace >= max(1, split_at // 2):
+            split_at = whitespace
+        return text[:split_at].rstrip(), text[split_at:].lstrip()
+
+    def _limit_to_two_lines(self, text, metrics, width):
+        """所有台词统一限制为最多两行，超长在第二行末尾省略。"""
+        normalized = " ".join(str(text).split())
+        if not normalized:
+            return ""
+        first, remaining = self._take_line(normalized, metrics, width)
+        if not remaining:
+            return first
+        second = metrics.elidedText(
+            remaining,
+            Qt.TextElideMode.ElideRight,
+            width,
+        )
+        return f"{first}\n{second}"
+
     def set_message(self, text):
-        self._text = text
         metrics = QFontMetrics(self._font)
-        single_line_width = metrics.horizontalAdvance(text)
+        normalized = " ".join(str(text).split())
+        natural_width = metrics.horizontalAdvance(normalized)
         text_width = min(
             self.MAX_TEXT_WIDTH,
-            max(106, single_line_width),
+            max(self.MIN_TEXT_WIDTH, natural_width),
         )
-        final_bounds = metrics.boundingRect(
-            QRect(0, 0, text_width, 1000),
-            self.text_flags,
-            text,
+        self._text = self._limit_to_two_lines(text, metrics, text_width)
+        line_count = min(self.MAX_LINES, self._text.count("\n") + 1)
+        # 使用实际行高预留完整两行空间，不再依赖
+        # boundingRect 在不同中文字体下的偏小估算。
+        text_height = metrics.lineSpacing() * max(2, line_count)
+        body_height = max(
+            72,
+            text_height + self.VERTICAL_PADDING * 2 + 5,
         )
         width = max(
             self.MIN_WIDTH,
-            final_bounds.width() + self.HORIZONTAL_PADDING * 2 + 14,
+            text_width + self.HORIZONTAL_PADDING * 2 + 14,
         )
-        height = max(
-            66,
-            final_bounds.height() + self.TOP_PADDING * 2 + self.TAIL_HEIGHT,
-        )
+        height = body_height + self.TAIL_HEIGHT + 8
         self.resize(width, height)
         self.update()
 
@@ -608,9 +717,9 @@ class SpeechBubble(QWidget):
         painter.setPen(QColor(55, 38, 45, 255))
         text_rect = body.adjusted(
             self.HORIZONTAL_PADDING,
-            self.TOP_PADDING - 2,
+            self.VERTICAL_PADDING - 2,
             -self.HORIZONTAL_PADDING,
-            -(self.TOP_PADDING - 2),
+            -(self.VERTICAL_PADDING - 2),
         )
         painter.drawText(text_rect, self.text_flags, self._text)
         painter.end()
@@ -647,6 +756,10 @@ class DesktopPet(QWidget):
         # 同一时间只复制一批，彻底避免不同批次争抢同名目标文件。
         self._copy_pool.setMaxThreadCount(1)
         self._copy_tasks = set()
+        self._dream_receive_kind = ""
+        self.receive_timer = QTimer(self)
+        self.receive_timer.setSingleShot(True)
+        self.receive_timer.timeout.connect(self._finish_dream_receive_feedback)
 
         # -------------------------
         # 2. 加载图片
@@ -752,6 +865,19 @@ class DesktopPet(QWidget):
         self._pending_speech = None
 
         # -------------------------
+        # 4.1 剪贴板历史（文字/链接/图片/文件）
+        # -------------------------
+        self.clipboard_history = ClipboardHistoryManager(
+            QApplication.clipboard(),
+            self,
+        )
+        self.clipboard_history.item_copied.connect(
+            lambda _kind: self.say_category("clipboard_copy")
+        )
+        self._clipboard_dialog = None
+        self._house_window = None
+
+        # -------------------------
         # 5. 拖拽状态
         # -------------------------
         self.dragging = False
@@ -765,6 +891,7 @@ class DesktopPet(QWidget):
         self._drag_last_global = QPoint()
         self._drag_last_time = time.perf_counter()
         self._drop_started_at = 0.0
+        self._tap_direction = 0.0
         self._shake_last_direction = 0
         self._shake_reversals = []
         self._shake_distance = 0.0
@@ -843,6 +970,40 @@ class DesktopPet(QWidget):
             self._mark_activity()
             self.behavior_timer.start()
 
+    def open_house(self):
+        """让桌宠暂时离开桌面，进入程序绘制的手绘小屋。"""
+        if self._house_window is None:
+            self._house_window = HandDrawnHouse(self._inbox_path())
+            self._house_window.returned_to_desktop.connect(self._return_from_house)
+            self._house_window.request_sleep.connect(self._sleep_from_house)
+        else:
+            self._house_window.inbox_path = self._inbox_path()
+            self._house_window.notes_path = self._inbox_path() / NOTES_FILE_NAME
+
+        self.bubble_timer.stop()
+        self.bubble.hide()
+        self.idle_timer.stop()
+        self.behavior_timer.stop()
+        self.hide()
+        self._house_window.show()
+        self._house_window.raise_()
+        self._house_window.activateWindow()
+
+    def _return_from_house(self):
+        """关闭小屋后，让原桌宠回到先前的桌面位置。"""
+        self.show()
+        self.raise_()
+        self._mark_activity()
+        if not self.idle_timer.isActive() and not self.anim_timer.isActive():
+            self.idle_timer.start()
+        if not self.behavior_timer.isActive():
+            self.behavior_timer.start()
+
+    def _sleep_from_house(self):
+        """点击小屋沙发：回到桌面后直接进入现有睡眠状态。"""
+        self._sleep_mode = True
+        self._settle()
+
     def _load_all_images(self):
         """加载全部素材，统一缩放到用户设置的高度。缺失图片自动跳过。"""
         self._images = {}
@@ -862,6 +1023,7 @@ class DesktopPet(QWidget):
             BLINK_HALF_IMAGE,
             BLINK_ALMOST_IMAGE,
             BLINK_CLOSED_IMAGE,
+            RECEIVE_BASE_IMAGE,
         ] + list(EXPRESSION_IMAGES.values()) + list(DRAG_HANG_IMAGES.values()) + list(DIZZY_IMAGES.values()) + list(EASTER_EGG_IMAGES.values()) + HAPPY_FRAMES + WALK_FRAMES + SLEEP_FRAMES + NUZZLE_FRAMES + WAKE_FRAMES
         for name in names:
             path = self.base_dir / name
@@ -877,6 +1039,8 @@ class DesktopPet(QWidget):
                 self.pet_height,
                 Qt.TransformationMode.SmoothTransformation
             )
+
+        self._prepare_receive_frames()
 
         if DEFAULT_IMAGE not in self._images:
             raise FileNotFoundError(
@@ -924,6 +1088,111 @@ class DesktopPet(QWidget):
     def _next_blink_start(self):
         """返回下一次眨眼的开始时间，间隔略随机才不会像计时器。"""
         return self._idle_elapsed_ms + random.randint(4500, 8000)
+
+    def _prepare_receive_frames(self):
+        """在空白卡片上动态绘制内容类型，避免为四种内容重复生成人物。"""
+        base = self._images.get(RECEIVE_BASE_IMAGE)
+        if base is None:
+            return
+        family = "Microsoft YaHei UI"
+        for font_path in (
+            Path("C:/Windows/Fonts/SIMYOU.TTF"),
+            Path("C:/Windows/Fonts/msyh.ttc"),
+        ):
+            if not font_path.exists():
+                continue
+            font_id = QFontDatabase.addApplicationFont(str(font_path))
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                family = families[0]
+                break
+        for kind, label in RECEIVE_LABELS.items():
+            frame = base.copy()
+            painter = QPainter(frame)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            card = QRectF(
+                frame.width() * 0.382,
+                frame.height() * 0.482,
+                frame.width() * 0.258,
+                frame.height() * 0.106,
+            )
+            icon_rect = QRectF(
+                card.left() + card.width() * 0.10,
+                card.top() + card.height() * 0.22,
+                card.height() * 0.56,
+                card.height() * 0.56,
+            )
+            self._draw_content_icon(painter, icon_rect, kind)
+            font = QFont(family)
+            font.setPixelSize(max(8, round(card.height() * 0.27)))
+            font.setWeight(QFont.Weight.DemiBold)
+            painter.setFont(font)
+            painter.setPen(QColor(112, 73, 68))
+            text_rect = QRectF(
+                icon_rect.right() + card.width() * 0.07,
+                card.top(),
+                card.right() - icon_rect.right() - card.width() * 0.14,
+                card.height(),
+            )
+            painter.drawText(
+                text_rect,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                label,
+            )
+            painter.end()
+            self._images[f"__receive_{kind}"] = frame
+
+    @staticmethod
+    def _draw_content_icon(painter, rect, kind):
+        """用矢量线条绘制类型图标，在任意缩放尺寸下都保持清晰。"""
+        color = QColor(192, 116, 105)
+        pen = QPen(color, max(1.2, rect.height() * 0.075))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        if kind == "file":
+            body = QRectF(rect.left() + rect.width() * 0.12, rect.top(), rect.width() * 0.72, rect.height())
+            painter.drawRoundedRect(body, rect.width() * 0.08, rect.width() * 0.08)
+            painter.drawLine(
+                QPointF(body.left() + body.width() * 0.22, body.top() + body.height() * 0.38),
+                QPointF(body.right() - body.width() * 0.18, body.top() + body.height() * 0.38),
+            )
+            painter.drawLine(
+                QPointF(body.left() + body.width() * 0.22, body.top() + body.height() * 0.62),
+                QPointF(body.right() - body.width() * 0.30, body.top() + body.height() * 0.62),
+            )
+        elif kind == "note":
+            painter.drawRoundedRect(rect, rect.width() * 0.12, rect.width() * 0.12)
+            for ratio in (0.30, 0.50, 0.70):
+                painter.drawLine(
+                    QPointF(rect.left() + rect.width() * 0.20, rect.top() + rect.height() * ratio),
+                    QPointF(rect.right() - rect.width() * (0.20 if ratio != 0.70 else 0.38), rect.top() + rect.height() * ratio),
+                )
+        elif kind == "link":
+            painter.drawEllipse(QRectF(rect.left(), rect.top() + rect.height() * 0.15, rect.width() * 0.62, rect.height() * 0.48))
+            painter.drawEllipse(QRectF(rect.left() + rect.width() * 0.38, rect.top() + rect.height() * 0.37, rect.width() * 0.62, rect.height() * 0.48))
+            painter.drawLine(
+                QPointF(rect.left() + rect.width() * 0.36, rect.top() + rect.height() * 0.56),
+                QPointF(rect.left() + rect.width() * 0.64, rect.top() + rect.height() * 0.44),
+            )
+        elif kind == "image":
+            painter.drawRoundedRect(rect, rect.width() * 0.10, rect.width() * 0.10)
+            painter.drawEllipse(QRectF(rect.left() + rect.width() * 0.62, rect.top() + rect.height() * 0.16, rect.width() * 0.16, rect.width() * 0.16))
+            mountain = QPainterPath()
+            mountain.moveTo(rect.left() + rect.width() * 0.12, rect.bottom() - rect.height() * 0.16)
+            mountain.lineTo(rect.left() + rect.width() * 0.40, rect.top() + rect.height() * 0.48)
+            mountain.lineTo(rect.left() + rect.width() * 0.57, rect.top() + rect.height() * 0.66)
+            mountain.lineTo(rect.left() + rect.width() * 0.72, rect.top() + rect.height() * 0.43)
+            mountain.lineTo(rect.right() - rect.width() * 0.08, rect.bottom() - rect.height() * 0.16)
+            painter.drawPath(mountain)
+        else:
+            radius = rect.width() * 0.13
+            painter.setBrush(QColor(230, 164, 153))
+            for x_ratio, y_ratio in ((0.28, 0.28), (0.72, 0.28), (0.28, 0.72), (0.72, 0.72)):
+                painter.drawEllipse(QPointF(rect.left() + rect.width() * x_ratio, rect.top() + rect.height() * y_ratio), radius, radius)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
 
     @staticmethod
     def _star_path(center_x, center_y, outer_radius, inner_radius=None):
@@ -1018,6 +1287,9 @@ class DesktopPet(QWidget):
                 painter.setBrush(color)
                 painter.drawPath(self._star_path(x, y, size))
             painter.restore()
+
+        if self._sleep_mode and self._dream_receive_kind:
+            self._draw_dream_receive_overlay(painter)
         painter.end()
 
         if supersample > 1:
@@ -1031,6 +1303,48 @@ class DesktopPet(QWidget):
             )
 
         self.label.setPixmap(stage)
+
+    def _draw_dream_receive_overlay(self, painter):
+        """睡眠时只在沙发上方浮出梦境提示，不改变人物或沙发。"""
+        scale = self.pet_height / PET_HEIGHT
+        cloud = QRectF(
+            self._stage_width - 112.0 * scale - STAGE_PADDING,
+            22.0 * scale,
+            98.0 * scale,
+            58.0 * scale,
+        )
+        painter.save()
+        painter.setPen(QPen(QColor(190, 137, 131, 220), max(1.0, 1.4 * scale)))
+        painter.setBrush(QColor(255, 252, 249, 238))
+        path = QPainterPath()
+        path.addRoundedRect(cloud, 18.0 * scale, 18.0 * scale)
+        painter.drawPath(path)
+        painter.drawEllipse(QRectF(cloud.left() - 13.0 * scale, cloud.bottom() - 8.0 * scale, 12.0 * scale, 12.0 * scale))
+        painter.drawEllipse(QRectF(cloud.left() - 22.0 * scale, cloud.bottom() + 4.0 * scale, 7.0 * scale, 7.0 * scale))
+
+        icon_rect = QRectF(
+            cloud.left() + 10.0 * scale,
+            cloud.top() + 15.0 * scale,
+            28.0 * scale,
+            28.0 * scale,
+        )
+        self._draw_content_icon(painter, icon_rect, self._dream_receive_kind)
+        font = QFont("Microsoft YaHei UI")
+        font.setPixelSize(max(8, round(10.0 * scale)))
+        font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font)
+        painter.setPen(QColor(108, 74, 70))
+        painter.drawText(
+            QRectF(
+                icon_rect.right() + 6.0 * scale,
+                cloud.top(),
+                cloud.right() - icon_rect.right() - 12.0 * scale,
+                cloud.height(),
+            ),
+            Qt.AlignmentFlag.AlignCenter,
+            RECEIVE_LABELS.get(self._dream_receive_kind, "内容"),
+        )
+        painter.restore()
 
     def _current_blink_frame(self):
         """选择当前眨眼帧，供普通待机和扒边待机共同使用。"""
@@ -1274,7 +1588,7 @@ class DesktopPet(QWidget):
             self._dizzy_pending = True
 
     def _begin_click_motion(self):
-        """普通单击只产生一次轻微按压与回弹，不再播放 Happy 动画。"""
+        """普通单击播放短促的注意反馈，不占用长时间交互。"""
         self._clear_expression(render=False)
         self.anim_timer.stop()
         self.anim_frames = []
@@ -1286,7 +1600,67 @@ class DesktopPet(QWidget):
         self._motion_state = "tap"
         self._drop_started_at = time.perf_counter()
         self.motion_timer.start()
-        self._render_drag_pose()
+        self._render_tap_pose(0.0)
+
+    def _render_tap_pose(self, elapsed_ms):
+        """轻缩、侧头回应、反向缓冲、回稳，并穿插一次柔和眯眼。"""
+        direction = self._tap_direction
+        if elapsed_ms < 65:
+            progress = self._ease_in_out(elapsed_ms / 65)
+            scale_x = 1.0 + 0.012 * progress
+            scale_y = 1.0 - 0.014 * progress
+            rotation = direction * 0.22 * progress
+            x_offset = direction * 0.25 * progress
+            y_offset = 0.9 * progress
+            shadow_scale = 1.0 + 0.018 * progress
+        elif elapsed_ms < 155:
+            progress = self._ease_in_out((elapsed_ms - 65) / 90)
+            scale_x = 1.012 - 0.018 * progress
+            scale_y = 0.986 + 0.030 * progress
+            rotation = direction * (0.22 + 0.92 * progress)
+            x_offset = direction * (0.25 + 0.70 * progress)
+            y_offset = 0.9 - 4.0 * progress
+            shadow_scale = 1.018 - 0.040 * progress
+        elif elapsed_ms < 275:
+            progress = self._ease_in_out((elapsed_ms - 155) / 120)
+            scale_x = 0.994 + 0.011 * progress
+            scale_y = 1.016 - 0.021 * progress
+            rotation = direction * (1.14 - 1.46 * progress)
+            x_offset = direction * (0.95 - 1.10 * progress)
+            y_offset = -3.1 + 3.9 * progress
+            shadow_scale = 0.978 + 0.030 * progress
+        else:
+            progress = self._ease_in_out(
+                (elapsed_ms - 275) / (TAP_DURATION_MS - 275)
+            )
+            scale_x = 1.005 - 0.005 * progress
+            scale_y = 0.995 + 0.005 * progress
+            rotation = direction * -0.32 * (1.0 - progress)
+            x_offset = direction * -0.15 * (1.0 - progress)
+            y_offset = 0.8 * (1.0 - progress)
+            shadow_scale = 1.008 - 0.008 * progress
+
+        if 72 <= elapsed_ms < 132:
+            source_name = BLINK_HALF_IMAGE
+        elif 132 <= elapsed_ms < 172:
+            source_name = BLINK_ALMOST_IMAGE
+        elif 172 <= elapsed_ms < 212:
+            source_name = BLINK_HALF_IMAGE
+        else:
+            source_name = BLINK_OPEN_IMAGE
+        source = self._idle_sources[source_name]
+        self._render_to_stage(
+            source,
+            rotation=rotation,
+            scale_x=scale_x,
+            scale_y=scale_y,
+            x_offset=x_offset,
+            y_offset=y_offset,
+            shadow_scale=shadow_scale,
+            shadow_opacity=1.0,
+            fit_height=True,
+            supersample=2,
+        )
 
     def _begin_dizzy_motion(self):
         """落地后进入短暂头晕状态，并显示一句对应台词。"""
@@ -1342,6 +1716,11 @@ class DesktopPet(QWidget):
         value = max(0.0, min(1.0, value))
         return 1.0 - (1.0 - value) ** 3
 
+    @staticmethod
+    def _ease_in_out(value):
+        value = max(0.0, min(1.0, value))
+        return value * value * (3.0 - 2.0 * value)
+
     def _on_motion_tick(self):
         if self._motion_state == "drag":
             self._drag_rotation += (
@@ -1363,33 +1742,8 @@ class DesktopPet(QWidget):
 
         if self._motion_state == "tap":
             elapsed_ms = (time.perf_counter() - self._drop_started_at) * 1000
-            if elapsed_ms < 80:
-                progress = self._ease_out(elapsed_ms / 80)
-                self._render_drag_pose(
-                    scale_x=1.0 + 0.025 * progress,
-                    scale_y=1.0 - 0.025 * progress,
-                    y_offset=1.5 * progress,
-                    shadow_scale=1.0 + 0.035 * progress,
-                    shadow_opacity=1.0,
-                )
-            elif elapsed_ms < 190:
-                progress = self._ease_out((elapsed_ms - 80) / 110)
-                self._render_drag_pose(
-                    scale_x=1.025 - 0.033 * progress,
-                    scale_y=0.975 + 0.035 * progress,
-                    y_offset=1.5 - 2.5 * progress,
-                    shadow_scale=1.035 - 0.043 * progress,
-                    shadow_opacity=1.0,
-                )
-            elif elapsed_ms < 300:
-                progress = self._ease_out((elapsed_ms - 190) / 110)
-                self._render_drag_pose(
-                    scale_x=0.992 + 0.008 * progress,
-                    scale_y=1.010 - 0.010 * progress,
-                    y_offset=-1.0 * (1.0 - progress),
-                    shadow_scale=0.992 + 0.008 * progress,
-                    shadow_opacity=1.0,
-                )
+            if elapsed_ms < TAP_DURATION_MS:
+                self._render_tap_pose(elapsed_ms)
             else:
                 self.motion_timer.stop()
                 self._motion_state = ""
@@ -1706,6 +2060,11 @@ class DesktopPet(QWidget):
         elif name == "wakeup":
             self.anim_intervals = WAKE_INTERVALS
             self.anim_timer.setInterval(WAKE_INTERVALS[0])
+        elif name.startswith("receive_"):
+            self.anim_intervals = [
+                55, 65, 80, RECEIVE_POSE_HOLD_MS, 90, 70, 60,
+            ]
+            self.anim_timer.setInterval(self.anim_intervals[0])
         elif name.startswith("easter_"):
             self.anim_intervals = [
                 EASTER_FADE_INTERVAL,
@@ -1893,7 +2252,7 @@ class DesktopPet(QWidget):
             return self._expression_name == category
         if category == "sleepy":
             return self._auto_sleep_pending or self._expression_name == "sleepy"
-        if category == "dream":
+        if category in ("dream", "dream_receive"):
             return self._sleep_mode
         if category == "dizzy":
             return self._motion_state == "dizzy"
@@ -2203,7 +2562,7 @@ class DesktopPet(QWidget):
         self.say_category("wakeup")
 
     def _register_disturbance(self):
-        """6 秒内连续四次点击/拖拽后触发一次不满。"""
+        """十秒点击链中第三次委屈、第六次生气，之后仍可累积彩蛋。"""
         now = time.perf_counter()
         if now < self._annoyed_cooldown_until:
             return False
@@ -2214,13 +2573,14 @@ class DesktopPet(QWidget):
         ]
         self._disturb_events.append(now)
         disturb_limit = self.settings["advanced"]["disturb_limit"]
-        if len(self._disturb_events) == disturb_limit - 1:
+        if len(self._disturb_events) == HURT_CLICK_COUNT:
             self.show_expression("hurt")
             self.say_category("hurt")
             return True
         if len(self._disturb_events) < disturb_limit:
             return False
-        self._disturb_events.clear()
+        # 不清空另一条十连击计数链；第六次之后由冷却阻止重复生气，
+        # 用户若继续点击，仍可在第十次顺利触发彩蛋。
         self._annoyed_cooldown_until = now + ANNOYED_COOLDOWN_MS / 1000.0
         if self.dragging or self._motion_state == "drag":
             self._pending_annoyed = True
@@ -2248,12 +2608,56 @@ class DesktopPet(QWidget):
     def _classify_drop(mime_data):
         local_paths = []
         links = []
+        remote_image_urls = []
+
+        def add_unique(collection, value):
+            if value and value not in collection:
+                collection.append(value)
+
+        def looks_like_image_url(value):
+            try:
+                parsed = urllib.parse.urlparse(value)
+            except ValueError:
+                return False
+            return (
+                parsed.scheme.lower() in ("http", "https")
+                and Path(urllib.parse.unquote(parsed.path)).suffix.lower()
+                in IMAGE_SUFFIXES
+            )
+
+        # Chrome/Edge/Firefox 拖动网页图片时，常常只给出
+        # HTML 中的 <img src> 而不是图片像素。
+        if mime_data.hasHtml():
+            html = mime_data.html()
+            for match in re.finditer(
+                r"<img\b[^>]*?\bsrc\s*=\s*(['\"])(.*?)\1",
+                html,
+                flags=re.IGNORECASE | re.DOTALL,
+            ):
+                source = match.group(2).strip().replace("&amp;", "&")
+                if source.lower().startswith(("http://", "https://")):
+                    add_unique(remote_image_urls, source)
+
+        # Chromium 在部分站点使用 DownloadURL：
+        # image/png:filename.png:https://...
+        for mime_format in mime_data.formats():
+            if str(mime_format).lower() != "downloadurl":
+                continue
+            raw = bytes(mime_data.data(mime_format)).decode("utf-8", errors="ignore")
+            parts = raw.split(":", 2)
+            if len(parts) == 3 and parts[0].lower().startswith("image/"):
+                add_unique(remote_image_urls, parts[2].strip())
+
         if mime_data.hasUrls():
             for url in mime_data.urls():
                 if url.isLocalFile() and url.toLocalFile():
                     local_paths.append(Path(url.toLocalFile()))
                 elif url.scheme().lower() in ("http", "https"):
-                    links.append(url.toString())
+                    value = url.toString()
+                    if value in remote_image_urls or looks_like_image_url(value):
+                        add_unique(remote_image_urls, value)
+                    else:
+                        add_unique(links, value)
 
         files = []
         image_files = []
@@ -2272,7 +2676,7 @@ class DesktopPet(QWidget):
                 inline_image = image_data
 
         note_text = ""
-        if not local_paths and inline_image is None and not links and mime_data.hasText():
+        if not local_paths and inline_image is None and not links and not remote_image_urls and mime_data.hasText():
             text = mime_data.text().strip()
             possible_link = QUrl(text)
             if (
@@ -2280,11 +2684,102 @@ class DesktopPet(QWidget):
                 and possible_link.isValid()
                 and possible_link.scheme().lower() in ("http", "https")
             ):
-                links.append(text)
+                if looks_like_image_url(text):
+                    remote_image_urls.append(text)
+                else:
+                    links.append(text)
             else:
                 note_text = text[:1_000_000]
 
-        return files, image_files, note_text, links, inline_image
+        # 只要拖拽数据明确包含 <img>，就把它视为图片拖放；
+        # 网页附带的跳转地址不再额外记入链接收藏。
+        if remote_image_urls:
+            links = []
+
+        return (
+            files,
+            image_files,
+            remote_image_urls,
+            note_text,
+            links,
+            inline_image,
+        )
+
+    @staticmethod
+    def _content_kind(
+        files,
+        image_files,
+        remote_image_urls,
+        note_text,
+        links,
+        inline_image,
+    ):
+        kinds = set()
+        if files:
+            kinds.add("file")
+        if image_files or remote_image_urls or inline_image is not None:
+            kinds.add("image")
+        if note_text:
+            kinds.add("note")
+        if links:
+            kinds.add("link")
+        if len(kinds) == 1:
+            return next(iter(kinds))
+        return "mixed" if kinds else ""
+
+    def _show_receive_feedback(self, kind):
+        """清醒时举牌；睡眠时只显示梦境气泡，不打断睡姿。"""
+        if not kind:
+            return
+        if self._sleep_mode:
+            self._dream_receive_kind = kind
+            self.receive_timer.start(RECEIVE_DREAM_HOLD_MS)
+            if self.anim_name and self.anim_frames:
+                self._show_image(self.anim_frames[self.anim_index])
+            return
+        if self._edge_side or self.dragging or self._easter_active:
+            return
+
+        target = f"__receive_{kind}"
+        start = BLINK_OPEN_IMAGE
+        if target not in self._images or start not in self._images:
+            return
+        frames = [
+            self._blend_frame(start, target, 0.24),
+            self._blend_frame(start, target, 0.52),
+            self._blend_frame(start, target, 0.80),
+            target,
+            self._blend_frame(start, target, 0.72),
+            self._blend_frame(start, target, 0.38),
+            start,
+        ]
+        self.play_frames(
+            frames,
+            name=f"receive_{kind}",
+            looping=False,
+            on_finish=self._settle,
+        )
+
+    def _finish_dream_receive_feedback(self):
+        if not self._dream_receive_kind:
+            return
+        self._dream_receive_kind = ""
+        if self.anim_name and self.anim_frames:
+            self._show_image(self.anim_frames[self.anim_index])
+        elif self._sleep_mode:
+            self._settle()
+
+    def _say_dream_receive(self, kind):
+        label = RECEIVE_LABELS.get(kind, "东西")
+        lines = self.settings["dialogues"].get("dream_receive", [])
+        if not lines:
+            lines = ["唄……梦里收到了{类型}……"]
+        text = random.choice(lines).replace("{类型}", label)
+        self.say(
+            text,
+            "dream_receive",
+            SPEECH_PRIORITIES["dream_receive"],
+        )
 
     def dragEnterEvent(self, event):
         if not self._supports_mime_data(event.mimeData()):
@@ -2304,37 +2799,59 @@ class DesktopPet(QWidget):
             event.ignore()
 
     def dropEvent(self, event):
-        files, image_files, note_text, links, inline_image = self._classify_drop(
-            event.mimeData()
-        )
+        (
+            files,
+            image_files,
+            remote_image_urls,
+            note_text,
+            links,
+            inline_image,
+        ) = self._classify_drop(event.mimeData())
         event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
         self._mark_activity()
-        if not any((files, image_files, note_text, links, inline_image is not None)):
+        if not any((
+            files,
+            image_files,
+            remote_image_urls,
+            note_text,
+            links,
+            inline_image is not None,
+        )):
             self.say_category("inbox_failure")
             return
+
+        receive_kind = self._content_kind(
+            files,
+            image_files,
+            remote_image_urls,
+            note_text,
+            links,
+            inline_image,
+        )
+        was_sleeping = self._sleep_mode
+        self._show_receive_feedback(receive_kind)
 
         task = InboxDropTask(
             self._inbox_path(),
             files=files,
             image_files=image_files,
+            remote_image_urls=remote_image_urls,
             note_text=note_text,
             links=links,
             inline_image=inline_image,
         )
         self._copy_tasks.add(task)
         task.signals.finished.connect(
-            lambda successes, failures, current=task:
-            self._on_inbox_copy_finished(current, successes, failures)
+            lambda successes, failures, current=task, sleeping=was_sleeping:
+            self._on_inbox_copy_finished(current, successes, failures, sleeping)
         )
         self._copy_pool.start(task)
 
-    def _on_inbox_copy_finished(self, task, successes, failures):
+    def _on_inbox_copy_finished(self, task, successes, failures, was_sleeping=False):
         self._copy_tasks.discard(task)
         self._last_inbox_failures = list(failures)
         if successes:
-            if not self._sleep_mode and not self._edge_side:
-                self.show_expression("petted")
             kinds = {kind for kind, _path in successes}
             category = {
                 "file": "inbox_success",
@@ -2342,7 +2859,11 @@ class DesktopPet(QWidget):
                 "link": "link_success",
                 "image": "image_success",
             }.get(next(iter(kinds)), "inbox_success") if len(kinds) == 1 else "inbox_success"
-            self.say_category(category)
+            if was_sleeping and self._sleep_mode:
+                kind = next(iter(kinds)) if len(kinds) == 1 else "mixed"
+                self._say_dream_receive(kind)
+            else:
+                self.say_category(category)
         if failures:
             self.say_category("inbox_failure")
 
@@ -2360,6 +2881,17 @@ class DesktopPet(QWidget):
             self._inbox_path() / IMAGES_FOLDER_NAME,
             is_folder=True,
         )
+
+    def open_clipboard_history(self):
+        if self._clipboard_dialog is None:
+            self._clipboard_dialog = ClipboardHistoryDialog(
+                self.clipboard_history,
+                self,
+            )
+        self._clipboard_dialog.refresh()
+        self._clipboard_dialog.show()
+        self._clipboard_dialog.raise_()
+        self._clipboard_dialog.activateWindow()
 
     def _open_collection_path(self, target, is_folder=False):
         try:
@@ -2407,6 +2939,11 @@ class DesktopPet(QWidget):
                 - self.frameGeometry().topLeft()
             )
             self._press_pos = event.globalPosition().toPoint()
+            local_center = max(1.0, self.width() / 2.0)
+            self._tap_direction = max(
+                -1.0,
+                min(1.0, (event.position().x() - local_center) / local_center),
+            )
             self._drag_last_global = self._press_pos
             self._drag_last_time = time.perf_counter()
             if (
@@ -2592,6 +3129,9 @@ class DesktopPet(QWidget):
         self._mark_activity()
         menu = QMenu(self)
 
+        house_action = menu.addAction("回家")
+        menu.addSeparator()
+
         # 行走动画开关（播放中则显示"停止行走"）
         self._walk_action = menu.addAction(
             "停止行走" if self.is_walking() else "行走动画"
@@ -2614,6 +3154,7 @@ class DesktopPet(QWidget):
         notes_action = inbox_menu.addAction("打开桌宠便签")
         links_action = inbox_menu.addAction("打开链接收藏")
         images_action = inbox_menu.addAction("打开图片收藏")
+        clipboard_action = menu.addAction("剪贴板历史（最近 5 条）")
         bubble_action = menu.addAction("说句话")
         settings_action = menu.addAction("设置…")
         menu.addSeparator()
@@ -2624,7 +3165,9 @@ class DesktopPet(QWidget):
         if selected is None:
             return
 
-        if selected == self._walk_action:
+        if selected == house_action:
+            self.open_house()
+        elif selected == self._walk_action:
             if self.is_walking():
                 self._settle()
             else:
@@ -2660,6 +3203,8 @@ class DesktopPet(QWidget):
             self.open_links()
         elif selected == images_action:
             self.open_images()
+        elif selected == clipboard_action:
+            self.open_clipboard_history()
         elif selected == bubble_action:
             self.say_random()
         elif selected == settings_action:

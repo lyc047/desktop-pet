@@ -128,6 +128,14 @@ DEFAULT_SETTINGS = {
             "图片已经放进收藏夹啦！",
             "这张图片我帮你收好啦。",
         ],
+        "dream_receive": [
+            "唄……梦里收到了{类型}……",
+            "先把{类型}放进梦境口袋里……",
+        ],
+        "clipboard_copy": [
+            "已经帮你复制回剪贴板啦！",
+            "找回来了，这次别忘记粘贴哦～",
+        ],
         "inbox_failure": [
             "这个文件没能收好，再试一次吧……",
             "收纳时遇到了一点问题。",
@@ -149,7 +157,7 @@ DEFAULT_SETTINGS = {
         "long_press_ms": 800,
         "bored_idle_ms": 45000,
         "auto_sleep_idle_ms": 90000,
-        "disturb_limit": 4,
+        "disturb_limit": 6,
         "shake_sensitivity": "normal",
         "speech_gap_ms": 600,
         "post_state_cooldown_ms": 3500,
@@ -175,6 +183,8 @@ DIALOGUE_CATEGORIES = (
     ("note_success", "文字记入便签"),
     ("link_success", "链接收藏成功"),
     ("image_success", "图片收藏成功"),
+    ("dream_receive", "睡梦中接收（可用{类型}）"),
+    ("clipboard_copy", "从剪贴板历史复制"),
     ("inbox_failure", "文件收纳失败"),
     ("easter_ghost", "连续点击彩蛋"),
     ("easter_dress", "持续摸头彩蛋"),
@@ -210,7 +220,13 @@ class SettingsStore:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError, TypeError):
             return copy.deepcopy(DEFAULT_SETTINGS)
-        return _merge_defaults(DEFAULT_SETTINGS, loaded)
+        merged = _merge_defaults(DEFAULT_SETTINGS, loaded)
+        # 旧版本默认值是四次触发不满。升级后自动迁移到新的六次逻辑，
+        # 避免已有 settings.json 继续覆盖新默认值。
+        loaded_advanced = loaded.get("advanced", {})
+        if loaded_advanced.get("disturb_limit") == 4:
+            merged["advanced"]["disturb_limit"] = 6
+        return merged
 
     def save(self, settings):
         self.path.parent.mkdir(parents=True, exist_ok=True)

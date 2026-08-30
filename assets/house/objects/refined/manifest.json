@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "scene_size": [1586, 992],
+  "base_image": "../../room_base_master_v2.png",
+  "asset_suffix": "_final_v3.png",
+  "objects": [
+    {
+      "id": "hanging_plant",
+      "label": "吊兰",
+      "asset": "hanging_plant_final_v3.png",
+      "rect": [405, 0, 147, 290],
+      "anchor": [478, 18],
+      "z": 10,
+      "interaction": "sway"
+    },
+    {
+      "id": "picture_rose",
+      "label": "玫瑰挂画",
+      "asset": "picture_rose_final_v3.png",
+      "rect": [595, 92, 105, 128],
+      "anchor": [647, 94],
+      "z": 10,
+      "interaction": "tilt"
+    },
+    {
+      "id": "picture_lavender",
+      "label": "薰衣草挂画",
+      "asset": "picture_lavender_final_v3.png",
+      "rect": [736, 118, 80, 107],
+      "anchor": [776, 120],
+      "z": 10,
+      "interaction": "tilt"
+    },
+    {
+      "id": "wall_clock",
+      "label": "挂钟",
+      "asset": "wall_clock_final_v3.png",
+      "rect": [864, 70, 94, 192],
+      "anchor": [911, 73],
+      "z": 10,
+      "interaction": "pendulum"
+    },
+    {
+      "id": "lamp",
+      "label": "落地灯",
+      "asset": "lamp_final_v3.png",
+      "rect": [28, 424, 166, 236],
+      "anchor": [111, 645],
+      "z": 30,
+      "interaction": "toggle_light"
+    },
+    {
+      "id": "cushion_left",
+      "label": "左靠枕",
+      "asset": "cushion_left_final_v3.png",
+      "rect": [252, 429, 170, 150],
+      "anchor": [337, 547],
+      "z": 30,
+      "interaction": "squash"
+    },
+    {
+      "id": "cushion_right",
+      "label": "右靠枕",
+      "asset": "cushion_right_final_v3.png",
+      "rect": [366, 408, 154, 144],
+      "anchor": [443, 522],
+      "z": 31,
+      "interaction": "squash"
+    },
+    {
+      "id": "radio",
+      "label": "收音机",
+      "asset": "radio_final_v3.png",
+      "rect": [600, 280, 111, 90],
+      "anchor": [655, 356],
+      "z": 30,
+      "interaction": "toggle_radio"
+    },
+    {
+      "id": "toy_car",
+      "label": "玩具车",
+      "asset": "toy_car_final_v3.png",
+      "rect": [704, 293, 61, 52],
+      "anchor": [734, 336],
+      "z": 31,
+      "interaction": "roll"
+    },
+    {
+      "id": "tea_set",
+      "label": "茶具",
+      "asset": "tea_set_final_v3.png",
+      "rect": [690, 376, 108, 62],
+      "anchor": [744, 428],
+      "z": 40,
+      "interaction": "pour_tea"
+    },
+    {
+      "id": "open_book",
+      "label": "翻开的书",
+      "asset": "open_book_final_v3.png",
+      "rect": [802, 380, 134, 56],
+      "anchor": [869, 426],
+      "z": 40,
+      "interaction": "page_turn"
+    },
+    {
+      "id": "number_puzzle",
+      "label": "数字华容道",
+      "asset": "number_puzzle_final_v3.png",
+      "rect": [947, 380, 88, 50],
+      "anchor": [991, 420],
+      "z": 40,
+      "interaction": "open_number_puzzle"
+    }
+  ]
+}

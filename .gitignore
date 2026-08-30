@@ -23,6 +23,28 @@ _tmp/
 _test*.py
 assets/debug/
 
+# 可由本地工具重新生成的素材草稿与预览
+assets/**/ai_sources/
+assets/**/aligned_preview/
+assets/**/refined_sources/
+assets/**/animated_sources/
+assets/**/debug_*.png
+assets/house/previews/
+assets/house/objects/animation_references/
+assets/house/objects/drawer_v2/
+assets/house/objects/tea/
+*_source_unused.png
+*_source.png
+*_preview*.png
+check_*.png
+diag_*.png
+layer_*.png
+preview_*.png
+house_preview*.png
+assets/character/nuzzle/runtime/blend_0[3-8].png
+assets/character/nuzzle/runtime/nuzzle[3-6].png
+assets/character/wakeup/runtime/wake_blend_*.png
+
 .idea/
 
 .idea/
