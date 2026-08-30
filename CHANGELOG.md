@@ -52,6 +52,8 @@
 
 ### 文件与素材
 
-- 新增：`house_window.py`、`house_scene_v2.py`、`house_scene_refined.py`、`reader_dialog.py`、`clipboard_history.py`
+- 新增：`house_window.py`（入口，转发至 refined 实现）、`house_scene_v2.py`、`house_scene_refined.py`、`reader_dialog.py`、`clipboard_history.py`
 - 新增素材：`assets/house/` 下的小屋背景、独立物件（`objects/refined/`）、茶具动画（`objects/tea_v2/`）、桌宠位置素材（`pet_positions/`）等
 - 修改：`main.py`、`settings_dialog.py`、`README.md`、`.gitignore`
+
+> **后续整理**（提交 `25117d1` 及之后）：清理了未使用的小屋备选素材与开发工具（如 `objects/tea/`、`objects/refined_sources/`、`tools/build_house_layers.py` 等）；删除过时文档 `objects/README.md`；`house_window.py` 瘦身为纯转发入口，移除早期整层裁切实现。
