@@ -47,6 +47,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from settings_dialog import SettingsDialog, SettingsStore, default_inbox_path
 from clipboard_history import ClipboardHistoryDialog, ClipboardHistoryManager
+from aim_trainer_dialog import AimTrainerDialog
 from house_window import HandDrawnHouse
 
 SINGLE_INSTANCE_SERVER_NAME = "DesktopPet_SingleInstance_v1"
@@ -875,6 +876,7 @@ class DesktopPet(QWidget):
             lambda _kind: self.say_category("clipboard_copy")
         )
         self._clipboard_dialog = None
+        self._aim_trainer_dialog = None
         self._house_window = None
 
         # -------------------------
@@ -2893,6 +2895,24 @@ class DesktopPet(QWidget):
         self._clipboard_dialog.raise_()
         self._clipboard_dialog.activateWindow()
 
+    def open_aim_trainer(self):
+        records_path = self._inbox_path() / "小游戏存档" / "打靶排行榜.json"
+        if (
+            self._aim_trainer_dialog is not None
+            and self._aim_trainer_dialog.records_path != records_path
+        ):
+            self._aim_trainer_dialog.close()
+            self._aim_trainer_dialog = None
+        if self._aim_trainer_dialog is None:
+            self._aim_trainer_dialog = AimTrainerDialog(records_path, self)
+            self._aim_trainer_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            self._aim_trainer_dialog.destroyed.connect(
+                lambda: setattr(self, "_aim_trainer_dialog", None)
+            )
+        self._aim_trainer_dialog.show()
+        self._aim_trainer_dialog.raise_()
+        self._aim_trainer_dialog.activateWindow()
+
     def _open_collection_path(self, target, is_folder=False):
         try:
             if is_folder:
@@ -3155,6 +3175,7 @@ class DesktopPet(QWidget):
         links_action = inbox_menu.addAction("打开链接收藏")
         images_action = inbox_menu.addAction("打开图片收藏")
         clipboard_action = menu.addAction("剪贴板历史（最近 5 条）")
+        aim_trainer_action = menu.addAction("打靶游戏")
         bubble_action = menu.addAction("说句话")
         settings_action = menu.addAction("设置…")
         menu.addSeparator()
@@ -3205,6 +3226,8 @@ class DesktopPet(QWidget):
             self.open_images()
         elif selected == clipboard_action:
             self.open_clipboard_history()
+        elif selected == aim_trainer_action:
+            self.open_aim_trainer()
         elif selected == bubble_action:
             self.say_random()
         elif selected == settings_action:

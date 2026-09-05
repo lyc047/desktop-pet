@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from aim_trainer_dialog import AimTrainerDialog
 from house_scene_v2 import DrawingPadDialog, NumberPuzzleDialog
 from reader_dialog import BookReaderDialog, BookshelfManagerDialog
 
@@ -115,6 +116,7 @@ class HandDrawnHouse(QWidget):
         self._drawing_dialog = None
         self._reader_dialog = None
         self._bookshelf_dialog = None
+        self._aim_dialog = None
 
         self.setWindowTitle("桌宠的小屋")
         self.setMinimumSize(930, 590)
@@ -142,6 +144,7 @@ class HandDrawnHouse(QWidget):
             "tea_set": ("oneshot", 1.00),
             "open_book": ("oneshot", 1.00),
             "number_puzzle": ("oneshot", 0.45),
+            "shooting_target": ("oneshot", 0.34),
         }
         result = {}
         for item in manifest["objects"]:
@@ -171,6 +174,16 @@ class HandDrawnHouse(QWidget):
             # so it is now a static, non-interactive detail.
             "side_drawer": ItemSpec(QRectF(122, 665, 114, 96), None, "static", 0.0, 46, False),
             "sofa": ItemSpec(QRectF(175, 410, 405, 285), None, "oneshot", 0.55, 0, False),
+            # A small hand-drawn target occupies the otherwise empty wall
+            # above the easel and opens the compact aim-training game.
+            "shooting_target": ItemSpec(
+                QRectF(978, 24, 108, 118),
+                "shooting_target_v1.png",
+                "oneshot",
+                0.34,
+                52,
+                True,
+            ),
         })
         return result
 
@@ -320,6 +333,19 @@ class HandDrawnHouse(QWidget):
                 self._puzzle_dialog.destroyed.connect(lambda: setattr(self, "_puzzle_dialog", None))
             self._puzzle_dialog.show()
             self._puzzle_dialog.raise_()
+            self._puzzle_dialog.activateWindow()
+        elif name == "shooting_target":
+            records_path = self.inbox_path / "小游戏存档" / "打靶排行榜.json"
+            if self._aim_dialog is not None and self._aim_dialog.records_path != records_path:
+                self._aim_dialog.close()
+                self._aim_dialog = None
+            if self._aim_dialog is None:
+                self._aim_dialog = AimTrainerDialog(records_path, self)
+                self._aim_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+                self._aim_dialog.destroyed.connect(lambda: setattr(self, "_aim_dialog", None))
+            self._aim_dialog.show()
+            self._aim_dialog.raise_()
+            self._aim_dialog.activateWindow()
         elif name == "canvas":
             if self._drawing_dialog is None:
                 self._drawing_dialog = DrawingPadDialog(self)
@@ -660,6 +686,21 @@ class HandDrawnHouse(QWidget):
             painter.setBrush(QColor(183, 148, 93, int(205 * clock)))
             painter.drawEllipse(QRectF(x - 7, 224, 14, 14))
 
+    def _draw_shooting_target(self, painter):
+        """Draw the wall-game entrance with a restrained click response."""
+        spec = self._items["shooting_target"]
+        pulse = math.sin(math.pi * self._value("shooting_target"))
+        scale = 1.0 + pulse * 0.045
+        width = spec.rect.width() * scale
+        height = spec.rect.height() * scale
+        target = QRectF(
+            spec.rect.center().x() - width / 2,
+            spec.rect.center().y() - height / 2,
+            width,
+            height,
+        )
+        self._draw_sprite(painter, "shooting_target", target)
+
     def _draw_lamp_atmosphere(self, painter):
         """Apply the warm, low-contrast paper mood while the lamp is on."""
         lamp = self._smooth(self._value("lamp"))
@@ -784,6 +825,9 @@ class HandDrawnHouse(QWidget):
         room = baked_room if baked_room and not baked_room.isNull() else self._room
         if not room.isNull():
             painter.drawPixmap(QRectF(0, 0, self.SCENE_W, self.SCENE_H), room, QRectF(room.rect()))
+        # The target is a new wall fixture and is layered over every complete
+        # room plate, so its entrance remains available in all character poses.
+        self._draw_shooting_target(painter)
         # Sofa, chair, canvas and bookshelf use complete baked room plates. The
         # remaining positions are independent foreground character sprites.
         if self._pet_location not in {"sofa", "chair", "canvas", "bookshelf"}:
